@@ -159,7 +159,7 @@ def get_current_song(scope, client_id, client_secret, redirect_uri):
     
     spotify_resp = sp.current_user_playing_track()
 
-    if spotify_resp['is_playing'] == False:
+    if spotify_resp == None or spotify_resp['is_playing'] == False:
         song = 'Not Playing Any Songs Currently'
         return song
     try:
