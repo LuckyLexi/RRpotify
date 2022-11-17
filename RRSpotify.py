@@ -7,7 +7,8 @@ import configparser
 import os
 from dotenv import load_dotenv
 import sys
-timeout = 60.0
+
+timeout = 45.0
 
 def resource_path(relative_path):
     try:
