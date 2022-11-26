@@ -14,4 +14,4 @@ Thanks to betterthenyou#8490 for making the icon!
 if you have any issues/need help, Message me: LameLexi#7004
 
 
-(doesnt work currently, you can if you really want to use it message me your spotify name and ill add you to the app but it gotta request an extension(which can take upto 6 weeks) for poeple to like actually be able to use it)
+(doesnt work currently, you can if you really want to use it message me your spotify name and ill add you to the app thingy but i gotta request an extension for the spotify app thingy, so that poeple to like actually be able to use it)
