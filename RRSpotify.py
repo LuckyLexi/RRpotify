@@ -7,7 +7,7 @@ import requests
 import spotipy
 import sys
 import os
-
+import datetime
 
 # ill be honest i dont remeber what this does all i know if i delete it it doesnt work
 def resource_path(relative_path):
@@ -17,6 +17,11 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+def writeconfig():
+    with open("config.ini", 'w') as f: 
+        config.write(f)
+    pass
 
 #reading the config file, loading the env
 config = configparser.ConfigParser()
@@ -36,15 +41,13 @@ except:
     config['DONTCHANGE']['config_check'] = 'Config file found.'
     config['DONTCHANGE']['song_compare'] = 'placeholder'
     config.add_section('BIO')
-    config['BIO']['savebio'] = 'false'
     config['BIO']['bio'] = ''
 
     config.add_section('LOGIN')
     config['LOGIN']['storelogin'] = 'false'
     config['LOGIN']['YOURUSERNAME'] = ''
     config['LOGIN']['YOURPASSWORD'] = ''
-    with open("config.ini", 'w') as f: 
-        config.write(f)
+    writeconfig()
 
 
 #getting users username/password
@@ -71,8 +74,7 @@ if config.getboolean('LOGIN', 'storelogin') == True:
             config['LOGIN']['storelogin'] = 'true'
             config['LOGIN']['YOURUSERNAME'] = YOURUSERNAME
             config['LOGIN']['YOURPASSWORD'] = YOURPASSWORD
-            with open("config.ini", 'w') as configfile:
-                config.write(configfile)
+            writeconfig()
 else:
     print('Enter the username/password of your account!')
     YOURUSERNAME = (input('Username: ')).lower()
@@ -90,62 +92,17 @@ else:
         config['LOGIN']['storelogin'] = 'true'
         config['LOGIN']['YOURUSERNAME'] = YOURUSERNAME
         config['LOGIN']['YOURPASSWORD'] = YOURPASSWORD
-        with open("config.ini", 'w') as configfile:
-            config.write(configfile)
+        writeconfig()
         
+accountid_resp = requests.get(f'https://accounts.rec.net/account?username={YOURUSERNAME}')
+accountid_resp_json = accountid_resp.json()
+accountId = accountid_resp_json['accountId']
+
 #setting spotipy auth stuff
 client_id = os.environ['client_id']
 client_secret = os.environ['client_secret']
 redirect_uri = 'http://localhost:7777/callback'
-scope = 'user-read-currently-playing'
-
-#asking user if theyd like stuff added to their bio
-bio = ''
-bioconfirm = 'n'
-def bioconfig(bioconfirm):
-    while bioconfirm == 'n':
-        bio = input('Enter any extra stuff you would like to add to your bio(press enter for none): ') 
-        print('Listening to:')
-        print('Example song by Example')
-        print(bio)
-        bioconfirm = input('Confirm you want your bio to this(y/n)?')
-        while bioconfirm not in {'y', 'n'}:
-            print('Enter y/n')
-            bioconfirm = input('Confirm you want your bio to this(y/n)?')
-
-    if bio not in {'', ' '}:
-        savebio = input('Would you like the bio you entered to be saved next time you run the program(y/n)? ')
-        while savebio not in {'y', 'n'}:
-            print('Enter y/n')
-            savebio = input('Would you like the bio you entered to be saved next time you run the program(y/n)? ')
-        if savebio == 'y':
-            config['BIO']['savebio'] = 'true'
-            config['BIO']['bio'] = bio
-        else:
-            config['BIO']['savebio'] = 'false'
-
-    with open("config.ini", 'w') as configfile:
-        config.write(configfile)
-
-    return bio
-config.read("config.ini")
-
-#getting saved bio if its there
-if config.getboolean('BIO', 'savebio') == False:
-    bio = bioconfig(bioconfirm)
-elif config.getboolean('BIO', 'savebio') == True: 
-    print('Found saved bio!')
-    print('Listening to:')
-    print('Example song by Example')
-    print(config['BIO']['bio'])
-    bioconfirm = input('Confirm you want your bio to be this(y/n)?')
-    while bioconfirm not in {'y', 'n'}:
-        print('Enter y/n')
-        bioconfirm = input('Confirm you want your bio to be this(y/n)?')
-    if bioconfirm == 'n':
-        bioconfig(bioconfirm)
-    else: 
-        bio = config['BIO']['bio']
+scope = 'user-read-playback-state'
 
 #recroom login 
 def login(YOURUSERNAME, YOURPASSWORD):
@@ -166,71 +123,131 @@ def song_info(scope, client_id, client_secret, redirect_uri):
     )
 
     #currently playing song request
-    spotify_resp = sp.current_user_playing_track()
+    spotify_song_resp = sp.current_user_playing_track()
 
     #check to see if song is being played and handling for if not
-    if spotify_resp == None or spotify_resp['is_playing'] == False:
-        song = 'Not Playing Any Songs Currently'
-        return song, 45.0
+    if spotify_song_resp != None or spotify_song_resp['is_playing'] != False:
+        # spotify device request to get the volume
+        spotify_device_resp = sp.devices()
 
-    #formating the song name 
-    track_name = spotify_resp['item']['name']
-    artists = [artist for artist in spotify_resp['item']['artists']]
-    artist_names = ', '.join([artist['name'] for artist in artists])
-    song = f'{track_name} by {artist_names}!'
+        #format the song name 
+        track_name = spotify_song_resp['item']['name']
+        artists = [artist for artist in spotify_song_resp['item']['artists']]
+        artist_names = ', '.join([artist['name'] for artist in artists])
+        song = f'{track_name} by {artist_names}!'
+        if len(song) < 32:
+            song = song[:-3]
+            song == f'{song}...'
 
-    #getting the remaining playtime on the song 
-    song_timestamp = spotify_resp['progress_ms']
-    song_duration = spotify_resp['item']['duration_ms']
-    remaining_playtime_ms = song_duration-song_timestamp-13
-    remaining_playtime = round(remaining_playtime_ms / 1000, 2)
-    if remaining_playtime >= 70.0:
-        remaining_playtime = 45.0
+        # making volume graphic 
+        for volume_percent in spotify_device_resp['devices']:
+            volume_percent = volume_percent['volume_percent']
+        if volume_percent == 0:
+            volume_graphic = '--------'
+        elif volume_percent in range(0, 12):
+            volume_graphic = '=-------'
+        elif volume_percent in range(13, 25):
+            volume_graphic = '==------'
+        elif volume_percent in range(26, 37):
+            volume_graphic = '===-----'
+        elif volume_percent in range(38, 50):
+            volume_graphic = '====----'
+        elif volume_percent in range(51, 62):
+            volume_graphic = '=====---'
+        elif volume_percent in range(63, 75):
+            volume_graphic = '======--'
+        elif volume_percent in range(76, 87):
+            volume_graphic = '=======-'
+        else:
+            volume_graphic = '========'
+
+        #getting the remaining playtime on the song 
+        song_timestamp = spotify_song_resp['progress_ms']
+        song_duration = spotify_song_resp['item']['duration_ms']
+        remaining_playtime_ms = song_duration-song_timestamp-13
+        remaining_playtime = round(remaining_playtime_ms / 1000, 2)
+        if remaining_playtime >= 70.0:
+            remaining_playtime = 45.0
     
-    #returning variables that the bio update needs
-    return song, remaining_playtime
+        #returning variables that the bio update needs
+        return song, remaining_playtime, volume_graphic
 
-def rr_bio_change(token, bio):
+def rr_bio_change(token, accountId):
 
     #calling song_info fuction
     song_info_ = song_info(scope, client_id, client_secret, redirect_uri)
     song = song_info_[0] #song
     remaining_playtime = song_info_[1] #remaining_playtime
 
-    if song != config['DONTCHANGE']['song_compare']:
-        
-        #writing the song to the config file
-        config['DONTCHANGE']['song_compare'] = song
-        with open("config.ini", 'w') as configfile:
-            config.write(configfile)
-        
-        #request for rec room bio change
-        rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', 
-            headers= {"Authorization": token}, 
-            data = {'bio':f"Listening To:\n{song}\n{bio}"}
-        )
-        
-        #renew token if the request returning 401
-        if rec_resp.status_code == 401:
-            token = login(YOURUSERNAME, YOURPASSWORD)
-            rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', headers= {"Authorization": token}, 
-            data = {'bio':f"Listening To:\n{song}\n{bio}"})
+    #rec room bio request
+    bio_resp = requests.get(f'https://accounts.rec.net/account/{accountId}/bio')
+    bio_resp_json = bio_resp.json()
+    bio_string = bio_resp_json['bio'].split('\n', 3)
+    
+    #checks if the song has been put into the bio before
+    if bio_string[0] == 'Playing:':
+        bio = bio_string[3]
+    else:
+        bio = bio_resp_json['bio']
+        print('Detected changed bio')
 
+
+    if song != config['DONTCHANGE']['song_compare'] or bio != config['BIO']['bio']:
         
+        #writing the song/bio to the config file
+        if song != config['DONTCHANGE']['song_compare']:
+            config['DONTCHANGE']['song_compare'] = song
+            writeconfig()
+        if bio != config['BIO']['bio']:
+            config['BIO']['bio'] = bio
+            writeconfig()
+            print('Detected changed bio')
+
+
+        #if theres a index error that means no song is playing
+        try:
+            volume_graphic = song_info_[2] #volume_graphic
+            #request for rec room bio change
+            rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', 
+                headers= {"Authorization": token}, 
+                data = {'bio':f"Playing:\n{song}\n|Volume: {volume_graphic}|\n{bio}"}
+            )
+            #renew rr token if the request returning 401
+            if rec_resp.status_code == 401:
+                token = login(YOURUSERNAME, YOURPASSWORD)
+                rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', headers= {"Authorization": token}, 
+                data = {'bio':f"Playing:\n{song}\n|Volume: {volume_graphic}|\n{bio}"}
+                )
+        except IndexError:
+            #request for rec room bio change
+            rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', 
+                headers= {"Authorization": token}, 
+                data = {'bio':f"Playing:\nNothing\n{bio}"}
+            )
+            
+            #renew token if the request returning 401
+            if rec_resp.status_code == 401:
+                token = login(YOURUSERNAME, YOURPASSWORD)
+                rec_resp = requests.put(f'https://accounts.rec.net/account/me/bio', headers= {"Authorization": token}, 
+                data = {'bio':f"Playing:\nNothing\n{bio}"}
+                )
+
         #just showing some info to give some feedback to the user 
         if rec_resp.status_code == 200:
             print(f'Currently playing song: {song}')
             print('Bio change succes!')
+            print(f'At {datetime.datetime.now()}')
         else: 
             print('-----')
             print(f'Currently playing song: {song}')
             print('Bio change failed.')
             print(f'Error code:{rec_resp.status_code}')
+            print(f'At {datetime.datetime.now()}')
             print('-----')
 
         #starting loop again after the song ends
-    sc.enter(remaining_playtime, 1, rr_bio_change, (token, bio))
+    sc.enter(remaining_playtime, 1, rr_bio_change, (token, accountId))
 
 #start the loop 
-sc.enter(1.0, 1, rr_bio_change, (token, bio))
+sc.enter(1.0, 1, rr_bio_change, (token, accountId))
 sc.run()
